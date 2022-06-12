@@ -1,0 +1,9 @@
+tc qdisc show dev lo
+sudo tc qdisc del dev lo root
+sudo rmmod sch_fq
+sudo insmod Sch_fq/sch_fq.ko 
+sudo tc qdisc add dev lo root fq maxrate 80mbit
+iperf -s -p 50500
+iperf -c localhost -p 50500
+
+
