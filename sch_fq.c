@@ -92,6 +92,8 @@ struct fq_flow_head {
 
 struct fq_sched_data {
 	struct fq_flow_head new_flows;
+     
+        struct fq_flow_head co_flows;
 
 	struct fq_flow_head old_flows;
 
@@ -419,8 +421,10 @@ static int fq_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 	qdisc_qstats_backlog_inc(sch, skb);
 	if (fq_flow_is_detached(f)) {
 		struct sock *sk = skb->sk;
-
-		fq_flow_add_tail(&q->new_flows, f);
+                
+	
+      		fq_flow_add_tail(&q->new_flows, f);
+		
 		if (time_after(jiffies, f->age + q->flow_refill_delay))
 			f->credit = max_t(u32, f->credit, q->quantum);
 		if (sk && q->rate_enable) {
@@ -431,18 +435,32 @@ static int fq_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 		}
 		q->inactive_flows--;
 	}
+
+        	if (pCount_enq < 4)
+
+        {       printk("In add values pCount is  : %d \n ", pCount_enq);
+                printk("In the If loop of adding flows to co flows \n");
+                flowmapper[pCount_enq] = f;
+               // fq_flow_add_tail(&q->co_flows, f);
+                bitmap[pCount_enq] = '1';
+                pCount_enq++;
+
+        }
+       
     
-     printk("In add values pCount is  : %d \n ", pCount_enq);
+     /*
 
          if (pCount_enq < 4)
 
-        {
+        {       printk("In add values pCount is  : %d \n ", pCount_enq);
                 printk("In the If loop of adding flows : %d \n", f->credit );
                 flowmapper[pCount_enq] = f;
                 bitmap[pCount_enq] = '1';
                 pCount_enq++;
 
         }
+    */
+       
 
 
 	/* Note: this overwrites f->age */
@@ -497,7 +515,10 @@ static struct sk_buff *fq_dequeue(struct Qdisc *sch)
 	if (skb)
 		goto out;
 	fq_check_throttled(q, now);
-begin:
+
+begin:  head = &q->co_flows;
+        if (!head->first) {
+        printk("In the If loop of deleting flows no co-flows \n");
 	head = &q->new_flows;
 	if (!head->first) {
 		head = &q->old_flows;
@@ -508,12 +529,12 @@ begin:
 			return NULL;
 		}
 	}
-
+  }
 	f = head->first;
 
        //flow deueueing
 
-        if(pCount_deq < 4)
+       /* if(pCount_deq < 4)
 
         {
 	
@@ -523,6 +544,7 @@ begin:
 
 
         }
+      */
 
 	if (f->credit <= 0) {
 		f->credit += q->quantum;
@@ -635,6 +657,7 @@ static void fq_reset(struct Qdisc *sch)
 	}
 	q->new_flows.first	= NULL;
 	q->old_flows.first	= NULL;
+ 	q->co_flows.first	= NULL;
 	q->delayed		= RB_ROOT;
 	q->flows		= 0;
 	q->inactive_flows	= 0;
@@ -857,6 +880,7 @@ static int fq_init(struct Qdisc *sch, struct nlattr *opt)
 	q->rate_enable		= 1;
 	q->new_flows.first	= NULL;
 	q->old_flows.first	= NULL;
+        q->co_flows.first      =  NULL;
 	q->delayed		= RB_ROOT;
 	q->fq_root		= NULL;
 	q->fq_trees_log		= ilog2(1024);
