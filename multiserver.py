@@ -10,6 +10,7 @@ def client_handler(connection):
     while True:
         data = connection.recv(2048)
         message = data.decode('utf-8')
+        print(message)
         if message == "4":
             connection.close()
             break
