@@ -58,9 +58,15 @@ int pCount_deq = 0;
 
 int pCount =0;
 
+int barriercounter = 0;
+
+int dcounter =0;
+
 unsigned pFlowid[2] = {0,0};
 
 int firstflag =0;
+
+int barrier[100000] = {0};
 
 struct fq_flow* flowmapper[nFlows];
 
@@ -491,7 +497,7 @@ static int fq_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 
 	if (!skb->tstamp) {
 		fq_skb_cb(skb)->time_to_send = q->ktime_cache = ktime_get_ns();
-		
+
 	} else {
 		/* Check if packet timestamp is too far in the future.
 		 * Try first if our cached value, to avoid ktime_get_ns()
@@ -522,17 +528,8 @@ static int fq_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 	qdisc_qstats_backlog_inc(sch, skb);
 	if (fq_flow_is_detached(f)) {
 
-	    if( (f->socket_hash == pFlowid[0]) || (f->socket_hash == pFlowid[1]) )
-	    {
-
-	    fq_flow_add_tail(&q->co_flows, f);
-
-	    }
-	    else{
-
 	    fq_flow_add_tail(&q->new_flows, f);
 
-	    }
 
 		if (time_after(jiffies, f->age + q->flow_refill_delay))
 			f->credit = max_t(u32, f->credit, q->quantum);
@@ -550,11 +547,37 @@ static int fq_enqueue(struct sk_buff *skb, struct Qdisc *sch,
         printk("pHash value  : %lu \n ", pHash);*/
 
 	flow_queue_add(f, skb);
-	if((firstflag == 0) && ((f->socket_hash == pFlowid[0]) || (f->socket_hash == pFlowid[1])) )
+
+	/*
+
+	setting the barrier bits
+	there are 100000 barriers for the co-flow
+
+	*/
+	if( (f->socket_hash == pFlowid[0]) || (f->socket_hash == pFlowid[1]) )
 	{
-	time_first = ktime_get_seconds();
-	firstflag =1;
+
+	if(f->socket_hash == pFlowid[0])
+	{
+	barrier[barriercounter] = barrier[barriercounter] | 1 << 0;
+
 	}
+
+	else{
+
+	barrier[barriercounter] = barrier[barriercounter] | 1 << 1;
+
+	}
+
+	}
+
+	if(barrier[barriercounter] == 3)
+	{
+
+	barriercounter = barriercounter + 1;
+
+	}
+
 
 	if (unlikely(f == &q->internal)) {
 		q->stat_internal_packets++;
@@ -594,9 +617,9 @@ static void fq_check_throttled(struct fq_sched_data *q, u64 now)
 static struct sk_buff *fq_dequeue(struct Qdisc *sch)
 {
 	struct fq_sched_data *q = qdisc_priv(sch);
-	struct fq_flow_head *head;
+	struct fq_flow_head *head, *coflowhead;
 	struct sk_buff *skb;
-	struct fq_flow *f;
+	struct fq_flow *f, *coflow;
 	unsigned long rate;
 	u32 plen;
 	u64 now;
@@ -613,12 +636,53 @@ static struct sk_buff *fq_dequeue(struct Qdisc *sch)
 	q->ktime_cache = now = ktime_get_ns();
 	fq_check_throttled(q, now);
 
+/*dequeuing using barrier process*/
 
-begin:  time_nw = ktime_get_seconds();
-        time_elapsed = time_nw - time_first;
-        if(time_elapsed >=200)
+begin:
+        if(barrier[dcounter]== 3)
         {
         printk("In Co-Flow \n ");
+        int i = 0;
+        while(i <2)
+        {
+        coflowhead = &q->new_flows;
+        coflow = coflowhead->first;
+        while(coflow->socket_hash != pFlowid[i])
+        {
+
+        coflow = coflow->next;
+
+        }
+        if(coflow->socket_hash == pFlowid[i])
+        {
+
+        i =i+1;
+        fq_flow_add_tail(&q->co_flows, coflow);
+
+        }
+
+        else{
+
+        coflowhead = &q->old_flows;
+        coflow = coflowhead->first;
+
+        while(coflow->socket_hash != pFlowid[i])
+        {
+
+        coflow = coflow->next;
+
+        }
+        if(coflow->socket_hash == pFlowid[i])
+        {
+        fq_flow_add_tail(&q->co_flows, coflow);
+        i =i+1;
+        }
+
+
+    }
+
+
+}
         //printk("time first  : %lu \n ", time_first);
         //printk("time now  : %lu \n ", time_nw);
         //printk("time elapsed  : %lu \n ", time_elapsed);
@@ -657,25 +721,12 @@ else {
 	f = head->first;
 
 	if (f->credit <= 0) {
+
 		f->credit += q->quantum;
 		head->first = f->next;
-		if((f->socket_hash == pFlowid[0]))
-		{
-			goto begin;
-		}
-		else if((f->socket_hash == pFlowid[1]))
-		{
-
-		time_first = ktime_get_seconds();
-		goto begin;
-
-		}
-		else
-		{
-
-			fq_flow_add_tail(&q->old_flows, f);
-			goto begin;
-		}
+		fq_flow_add_tail(&q->old_flows, f);
+        dcounter++;
+        goto begin;
 	}
 
 	skb = fq_peek(f);
@@ -687,6 +738,7 @@ else {
 			head->first = f->next;
 			f->time_next_packet = time_next_packet;
 			fq_flow_set_throttled(q, f);
+			dcounter++;
 			goto begin;
 		}
 		prefetch(&skb->end);
@@ -704,6 +756,7 @@ else {
 			fq_flow_set_detached(f);
 			q->inactive_flows++;
 		}
+		dcounter++;
 		goto begin;
 	}
 	plen = qdisc_pkt_len(skb);
