@@ -58,7 +58,7 @@ int pCount_deq = 0;
 
 int pCount =0;
 
-int barriercounter = 0;
+int barriercounter_flow[2] = {0};
 
 int dcounter =0;
 
@@ -68,7 +68,7 @@ int firstflag =0;
 
 int barrier[100000] = {0};
 
-struct fq_flow* flowmapper[nFlows];
+struct fq_flow* flowmapper[2];
 
 char *bitmap[nFlows];
 
@@ -79,6 +79,24 @@ unsigned long time_first,time_nw, time_elapsed;
 struct fq_skb_cb {
 	u64	        time_to_send;
 };
+
+
+int valuePresentinArray(unsigned val, unsigned arr[])
+{
+    printk("In valuepresent Array value of %u\n", val );
+    int i;
+    for(i = 0; i < (sizeof(arr) / sizeof(arr[0])); i++)
+    {
+        if(arr[i] == val)
+        {
+            printk("In valuepresent index value of %u\n", i );
+            return i;
+        }
+    }
+    return -1;
+}
+
+
 
 static inline struct fq_skb_cb *fq_skb_cb(struct sk_buff *skb)
 {
@@ -195,6 +213,62 @@ static void fq_flow_add_tail(struct fq_flow_head *head, struct fq_flow *flow)
 		head->first = flow;
 	head->last = flow;
 	flow->next = NULL;
+}
+
+
+static void addcoflows(struct fq_flow_head *old,struct fq_flow_head *new,struct fq_flow_head *coflowhead,struct fq_flow *firstflow,struct fq_flow *coflow,unsigned arr[])
+{
+	printk("In addcoflows \n");
+	
+	fq_flow_add_tail(coflowhead, firstflow);
+	
+	coflow = firstflow;
+	
+	struct fq_flow *temp;
+	
+	firstflow = new->first;
+	
+	while(!firstflow)
+	{
+	
+	int i = valuePresentinArray(firstflow->next->socket_hash, arr);
+	if(i!= -1)
+	{
+	
+	fq_flow_add_tail(coflowhead, firstflow->next);
+	temp = firstflow->next;
+	firstflow->next = temp->next;
+        printk("In add co-flow hash of flow value : %u \n ", firstflow->socket_hash  );
+	}
+	
+	firstflow=firstflow->next;
+
+	}
+	
+	firstflow = old->first;
+	while(!firstflow)
+	{
+	
+	int i = valuePresentinArray(firstflow->next->socket_hash, arr);
+	if(i!= -1)
+	{
+	fq_flow_add_tail(coflowhead, firstflow->next);
+	
+	temp = firstflow->next;
+	
+	firstflow->next = temp->next;
+	
+	printk("In add co-flow  hash of flow value : %u \n ", firstflow->socket_hash  );
+	
+	}
+	firstflow=firstflow->next;
+
+	}
+	
+        firstflow=coflow;
+        printk("In add co-flow  hash of flow value : %u \n ", firstflow->socket_hash );
+
+
 }
 
 static void fq_flow_unset_throttled(struct fq_sched_data *q, struct fq_flow *f)
@@ -360,7 +434,7 @@ static struct fq_flow *fq_classify(struct sk_buff *skb, struct fq_sched_data *q)
 				     f->socket_hash != sk->sk_hash)) {
 				f->credit = q->initial_quantum;
 				f->socket_hash = sk->sk_hash;
-				printk("flow hash in rb tree value of each flow is  : %u \n ",f->socket_hash );
+				//printk("flow hash in rb tree value of each flow is  : %u \n ",f->socket_hash );
 				if((pFlowid[0] ==0) && (pFlowid[1] ==0) )
 				pFlowid[0] = f->socket_hash;
 				if((pFlowid[0] !=0 )&& (pFlowid[1] ==0) )
@@ -403,7 +477,7 @@ static struct fq_flow *fq_classify(struct sk_buff *skb, struct fq_sched_data *q)
 
 	q->flows++;
 	q->inactive_flows++;
-	printk("flow hash in after classification  : %u \n ",f->socket_hash );
+	//printk("flow hash in after classification  : %u \n ",f->socket_hash );
 	return f;
 }
 
@@ -554,30 +628,21 @@ static int fq_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 	there are 100000 barriers for the co-flow
 
 	*/
-	if( (f->socket_hash == pFlowid[0]) || (f->socket_hash == pFlowid[1]) )
-	{
-
+	
 	if(f->socket_hash == pFlowid[0])
 	{
-	barrier[barriercounter] = barrier[barriercounter] | 1 << 0;
-
+	barrier[barriercounter_flow[0]] = barrier[barriercounter_flow[0]] | 1 << 0;
+        barriercounter_flow[0]++;
+        flowmapper[0] = f;
 	}
 
-	else{
-
-	barrier[barriercounter] = barrier[barriercounter] | 1 << 1;
-
-	}
-
-	}
-
-	if(barrier[barriercounter] == 3)
+	if(f->socket_hash == pFlowid[1])
 	{
 
-	barriercounter = barriercounter + 1;
-
+	barrier[barriercounter_flow[1]] = barrier[barriercounter_flow[1]] | 1 << 1;
+	barriercounter_flow[1]++;
+	flowmapper[1] = f;
 	}
-
 
 	if (unlikely(f == &q->internal)) {
 		q->stat_internal_packets++;
@@ -617,10 +682,11 @@ static void fq_check_throttled(struct fq_sched_data *q, u64 now)
 static struct sk_buff *fq_dequeue(struct Qdisc *sch)
 {
 	struct fq_sched_data *q = qdisc_priv(sch);
-	struct fq_flow_head *head, *coflowhead;
+	struct fq_flow_head *head;
 	struct sk_buff *skb;
 	struct fq_flow *f, *coflow;
 	unsigned long rate;
+	int dcounter = 0;
 	u32 plen;
 	u64 now;
 
@@ -638,55 +704,8 @@ static struct sk_buff *fq_dequeue(struct Qdisc *sch)
 
 /*dequeuing using barrier process*/
 
-begin:
-        if(barrier[dcounter]== 3)
-        {
-        printk("In Co-Flow \n ");
-        int i = 0;
-        while(i <2)
-        {
-        coflowhead = &q->new_flows;
-        coflow = coflowhead->first;
-        while(coflow->socket_hash != pFlowid[i])
-        {
-
-        coflow = coflow->next;
-
-        }
-        if(coflow->socket_hash == pFlowid[i])
-        {
-
-        i =i+1;
-        fq_flow_add_tail(&q->co_flows, coflow);
-
-        }
-
-        else{
-
-        coflowhead = &q->old_flows;
-        coflow = coflowhead->first;
-
-        while(coflow->socket_hash != pFlowid[i])
-        {
-
-        coflow = coflow->next;
-
-        }
-        if(coflow->socket_hash == pFlowid[i])
-        {
-        fq_flow_add_tail(&q->co_flows, coflow);
-        i =i+1;
-        }
-
-
-    }
-
-
-}
-        //printk("time first  : %lu \n ", time_first);
-        //printk("time now  : %lu \n ", time_nw);
-        //printk("time elapsed  : %lu \n ", time_elapsed);
-	head = &q->co_flows;
+begin:	head = &q->co_flows;
+	//printk("adding In co-flow \n");
 	if (!head->first) {
 	head = &q->new_flows;
 	if (!head->first) {
@@ -700,33 +719,35 @@ begin:
 		}
 	}
     }
-  }
 
-
-else {
-
-   printk("In New-Flow \n ");
-   head = &q->new_flows;
-	if (!head->first) {
-		head = &q->old_flows;
-		if (!head->first) {
-			if (q->time_next_delayed_flow != ~0ULL)
-				qdisc_watchdog_schedule_range_ns(&q->watchdog,
-							q->time_next_delayed_flow,
-							q->timer_slack);
-			return NULL;
-		}
-	}
-  }
 	f = head->first;
+	
+	int rValue = valuePresentinArray(f->socket_hash, pFlowid);
+	
+	printk("barrier value  : %d \n ", barrier[dcounter]);
+	
+	if( (rValue != -1) && (barrier[dcounter] == 3) )
+	{
+	printk("Breach Occured \n");
+	barrier[dcounter] = 0;
+	head->first = f->next;
+	printk("adding all co-flows together \n");
+	addcoflows(&q->old_flows,&q->new_flows,&q->co_flows,f, coflow,pFlowid);
+	goto begin;
+	}
+	
+	if(!barrier[dcounter])
+	{
+	   dcounter++;
+	}
+	
 
 	if (f->credit <= 0) {
 
 		f->credit += q->quantum;
 		head->first = f->next;
 		fq_flow_add_tail(&q->old_flows, f);
-        dcounter++;
-        goto begin;
+               goto begin;
 	}
 
 	skb = fq_peek(f);
@@ -738,7 +759,6 @@ else {
 			head->first = f->next;
 			f->time_next_packet = time_next_packet;
 			fq_flow_set_throttled(q, f);
-			dcounter++;
 			goto begin;
 		}
 		prefetch(&skb->end);
@@ -756,7 +776,6 @@ else {
 			fq_flow_set_detached(f);
 			q->inactive_flows++;
 		}
-		dcounter++;
 		goto begin;
 	}
 	plen = qdisc_pkt_len(skb);
