@@ -50,9 +50,67 @@
 #include <net/tcp_states.h>
 #include <net/tcp.h>
 
+ #define nFlows 4
+
+int pCount_enq = 0;
+
+int pCount_deq = 0;
+
+int pCount =0;
+
+int barriercounter_flow[2] = {0};
+
+int dcounter =0;
+
+u32 pFlowid[2] = {-1,-1};
+
+int firstflag =0;
+
+int barrier[100000] = {0};
+
+struct fq_flow* flowmapper[2];
+
+char *bitmap[nFlows];
+
+unsigned long pCoflow[nFlows];
+
+unsigned long time_first,time_nw, time_elapsed;
+
 struct fq_skb_cb {
 	u64	        time_to_send;
 };
+
+/*This function is used to check if a flow belongs to a co-flow set, all the flows are identified by the f->socket_hash */
+int valuePresentinArray(u32 val, u32 arr[])
+{
+    printk("In valuepresent Array value of %u\n", val );
+    int i;
+    for(i = 0; i < (sizeof(arr)/sizeof(arr[0])); i++)
+    {
+        printk("In Array Present function Array Value is  %u\n", arr[i] );
+        if(arr[i] == val)
+        {
+            printk("In Array Present function match occured value present index value of %u\n", i );
+            return i;
+        }
+    }
+    return -1;
+}
+
+static void resetFlowid(unsigned arr[])
+
+{
+
+    int i;
+    for(i = 0; i < (sizeof(arr)/sizeof(arr[0])); i++)
+	 {
+        
+        arr[i] = -1;
+
+	}
+
+}
+
 
 static inline struct fq_skb_cb *fq_skb_cb(struct sk_buff *skb)
 {
@@ -97,6 +155,8 @@ struct fq_sched_data {
 	struct fq_flow_head new_flows;
 
 	struct fq_flow_head old_flows;
+
+	struct fq_flow_head co_flows;
 
 	struct rb_root	delayed;	/* for rate limited flows */
 	u64		time_next_delayed_flow;
@@ -167,6 +227,81 @@ static void fq_flow_add_tail(struct fq_flow_head *head, struct fq_flow *flow)
 		head->first = flow;
 	head->last = flow;
 	flow->next = NULL;
+}
+
+/*
+
+Once a flow is identified to be part of a co-flow set and breach has occured , all the subsequent flows belnging to co-flow
+
+set will be promoted to co-flow set, co-flows are searched in both ld and new flow list
+
+*/
+static void Promotecoflows(struct fq_flow_head *old,struct fq_flow_head *new,struct fq_flow_head *coflowhead,struct fq_flow *firstflow,struct fq_flow *coflow,unsigned arr[])
+{
+	printk("In Promotecoflows \n");
+
+	fq_flow_add_tail(coflowhead, firstflow);//first flow identfied as part of co-flow set will be added to co-flow set
+	coflow = firstflow;
+
+	struct fq_flow *temp = NULL;
+
+	firstflow = new->first;
+
+	while(!firstflow)
+	{
+
+        //check if f->next is NULL 
+        
+        if(firstflow->next == NULL)
+        break;
+
+	int i = valuePresentinArray(firstflow->next->socket_hash, arr);
+	if(i!= -1)
+	{
+	//we detect the flow in the new flow set and then add to the co-flow set
+	temp = firstflow->next;
+	
+	firstflow->next = firstflow->next->next;
+	
+	fq_flow_add_tail(coflowhead, temp);
+	
+        printk("In add co-flow hash of flow value : %u \n ", firstflow->socket_hash  );
+	}
+
+	firstflow=firstflow->next;
+
+	}
+
+	temp = NULL;
+	firstflow = old->first;
+	while(!firstflow)
+	{
+	
+	if(firstflow->next == NULL)
+        break;
+
+	int i = valuePresentinArray(firstflow->next->socket_hash, arr);
+	if(i!= -1)
+	{
+	//we detect the flow in the old flow set and then add to the co-flow set
+	
+	temp = firstflow->next;
+	
+	firstflow->next = firstflow->next->next;
+
+	fq_flow_add_tail(coflowhead, temp);
+
+	printk("In add co-flow  hash of flow value : %u \n ", firstflow->socket_hash  );
+
+	}
+	firstflow=firstflow->next;
+
+	}
+
+        firstflow=coflow;
+        printk("In add co-flow  hash of flow value : %u \n ", firstflow->socket_hash );
+
+
 }
 
 static void fq_flow_unset_throttled(struct fq_sched_data *q, struct fq_flow *f)
@@ -265,6 +400,11 @@ static struct fq_flow *fq_classify(struct sk_buff *skb, struct fq_sched_data *q)
 	struct rb_root *root;
 	struct fq_flow *f;
 
+	//printk("In add values address pair is  : %lld \n ", sk->sk_portpair);
+	//printk("In add values destination port is  : %lld \n ", sk->sk_dport);
+	//printk("In add values hash pair is  : %d \n ", skb_get_hash(skb));
+
+
 	/* warning: no starvation prevention... */
 	if (unlikely((skb->priority & TC_PRIO_MAX) == TC_PRIO_CONTROL))
 		return &q->internal;
@@ -285,9 +425,15 @@ static struct fq_flow *fq_classify(struct sk_buff *skb, struct fq_sched_data *q)
 		 * collide with a local flow (socket pointers are word aligned)
 		 */
 		sk = (struct sock *)((hash << 1) | 1UL);
+
+		//printk("hash value in fq classify  after sk creation : %lu \n ", hash );
+
 		skb_orphan(skb);
 	} else if (sk->sk_state == TCP_CLOSE) {
 		unsigned long hash = skb_get_hash(skb) & q->orphan_mask;
+
+
+		//printk("hash  value in fq classify in else if  of each flow is  : %lu \n ",hash );
 		/*
 		 * Sockets in TCP_CLOSE are non connected.
 		 * Typical use case is UDP sockets, they can send packets
@@ -321,6 +467,33 @@ static struct fq_flow *fq_classify(struct sk_buff *skb, struct fq_sched_data *q)
 				     f->socket_hash != sk->sk_hash)) {
 				f->credit = q->initial_quantum;
 				f->socket_hash = sk->sk_hash;
+				//printk("flow hash in rb tree value of each flow is  : %u \n ",f->socket_hash );
+				if((pFlowid[0] == -1) && (pFlowid[1] ==-1) )
+				{
+				pFlowid[0] = f->socket_hash;
+				printk("flow pflowid 0 hash in rb tree value of each flow is  : %u \n ",pFlowid[0] );
+				/*if(pFlowid[0] == 0)
+					{
+				resetFlowid(pFlowid);
+					}*/
+				}
+				
+				if((pFlowid[0] != -1 ) && (pFlowid[1] == -1) )
+				{
+				
+				int lVal = valuePresentinArray(f->socket_hash,pFlowid);
+				
+				if(pFlowid[0] != f->socket_hash)
+				pFlowid[1] = f->socket_hash;
+				
+				printk("flow pflowid 1 hash in rb tree value of each flow is  : %u \n ",pFlowid[1] );
+				
+				/*if((pFlowid[1] == 0) )
+					{
+				resetFlowid(pFlowid);
+					}*/
+				}
+
 				if (q->rate_enable)
 					smp_store_release(&sk->sk_pacing_status,
 							  SK_PACING_FQ);
@@ -358,6 +531,7 @@ static struct fq_flow *fq_classify(struct sk_buff *skb, struct fq_sched_data *q)
 
 	q->flows++;
 	q->inactive_flows++;
+	//printk("flow hash in after classification  : %u \n ",f->socket_hash );
 	return f;
 }
 
@@ -429,6 +603,7 @@ static void flow_queue_add(struct fq_flow *flow, struct sk_buff *skb)
 		else
 			p = &parent->rb_left;
 	}
+	//printk("In add values skb after classification to check in add is  : %d \n ", skb_get_hash(skb));
 	rb_link_node(&skb->rbnode, parent, p);
 	rb_insert_color(&skb->rbnode, &flow->t_root);
 }
@@ -450,6 +625,7 @@ static int fq_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 
 	if (!skb->tstamp) {
 		fq_skb_cb(skb)->time_to_send = q->ktime_cache = ktime_get_ns();
+
 	} else {
 		/* Check if packet timestamp is too far in the future.
 		 * Try first if our cached value, to avoid ktime_get_ns()
@@ -479,14 +655,61 @@ static int fq_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 	f->qlen++;
 	qdisc_qstats_backlog_inc(sch, skb);
 	if (fq_flow_is_detached(f)) {
-		fq_flow_add_tail(&q->new_flows, f);
+
+	    fq_flow_add_tail(&q->new_flows, f);
+
+
 		if (time_after(jiffies, f->age + q->flow_refill_delay))
 			f->credit = max_t(u32, f->credit, q->quantum);
 		q->inactive_flows--;
 	}
 
 	/* Note: this overwrites f->age */
+
+        //printk("hash of flow value : %u \n ", (f->socket_hash & q->orphan_mask) );
+
+        /*printk("skb get hash value  : %u \n ", skb_get_hash(skb));
+
+        unsigned long pHash = skb_get_hash(skb) & q->orphan_mask;
+
+        printk("pHash value  : %lu \n ", pHash);*/
+
 	flow_queue_add(f, skb);
+
+	/*
+
+	setting the barrier bits
+	there are 100000 barriers for the co-flow
+
+	individual bits are set by two variabes
+
+	time to send being modified
+
+	*/
+
+	if(f->socket_hash == pFlowid[0])
+	{
+	barrier[barriercounter_flow[0]] = barrier[barriercounter_flow[0]] | 1 << 0;
+	
+	printk("pflow id 0  is   : %d \n ", pFlowid[0]);
+
+	fq_skb_cb(skb)->time_to_send = ktime_get_ns() + 10000000;
+
+        barriercounter_flow[0]++;
+	}
+
+	if(f->socket_hash == pFlowid[1])
+	{
+
+	barrier[barriercounter_flow[1]] = barrier[barriercounter_flow[1]] | 1 << 1;
+	
+	printk("pflow id 1  is   : %d \n ", pFlowid[1]);
+
+	fq_skb_cb(skb)->time_to_send = ktime_get_ns() + 10000000;
+
+	barriercounter_flow[1]++;
+
+	}
 
 	if (unlikely(f == &q->internal)) {
 		q->stat_internal_packets++;
@@ -528,8 +751,9 @@ static struct sk_buff *fq_dequeue(struct Qdisc *sch)
 	struct fq_sched_data *q = qdisc_priv(sch);
 	struct fq_flow_head *head;
 	struct sk_buff *skb;
-	struct fq_flow *f;
+	struct fq_flow *f, *coflow;
 	unsigned long rate;
+	int dcounter = 0;
 	u32 plen;
 	u64 now;
 
@@ -544,7 +768,12 @@ static struct sk_buff *fq_dequeue(struct Qdisc *sch)
 
 	q->ktime_cache = now = ktime_get_ns();
 	fq_check_throttled(q, now);
-begin:
+
+/*dequeuing using barrier process*/
+
+begin:	head = &q->co_flows;
+	//printk("adding In co-flow \n");
+	if (!head->first) {
 	head = &q->new_flows;
 	if (!head->first) {
 		head = &q->old_flows;
@@ -556,13 +785,39 @@ begin:
 			return NULL;
 		}
 	}
+    }
+
 	f = head->first;
 
+	int rValue = valuePresentinArray(f->socket_hash, pFlowid);
+	
+	printk("rValue is   : %d \n ", rValue);
+	
+	//printk("barrier value  : %d \n ", barrier[dcounter]);
+
+/* Breach and membership of the flow is checked once it is satisfied all the flows are added to co-flow set at once
+	if( (rValue != -1) && (barrier[dcounter] == 3) )
+	{
+	printk("Breach Occured \n");
+	barrier[dcounter] = 0;
+	head->first = f->next;
+	printk("adding all co-flows together \n");
+	Promotecoflows(&q->old_flows,&q->new_flows,&q->co_flows,f, coflow,pFlowid);
+	}
+
+	if(!barrier[dcounter])
+	{
+	   dcounter++;
+	}
+
+	/*demotion is defualt and we need not use any specific function because of how the flows are added to old flows if 	cedit is not enough to send the packets
+*/
 	if (f->credit <= 0) {
+
 		f->credit += q->quantum;
 		head->first = f->next;
 		fq_flow_add_tail(&q->old_flows, f);
-		goto begin;
+               goto begin;
 	}
 
 	skb = fq_peek(f);
@@ -688,6 +943,7 @@ static void fq_reset(struct Qdisc *sch)
 	}
 	q->new_flows.first	= NULL;
 	q->old_flows.first	= NULL;
+	q->co_flows.first      = NULL;
 	q->delayed		= RB_ROOT;
 	q->flows		= 0;
 	q->inactive_flows	= 0;
@@ -939,6 +1195,7 @@ static int fq_init(struct Qdisc *sch, struct nlattr *opt,
 	q->rate_enable		= 1;
 	q->new_flows.first	= NULL;
 	q->old_flows.first	= NULL;
+	q->co_flows.first	= NULL;
 	q->delayed		= RB_ROOT;
 	q->fq_root		= NULL;
 	q->fq_trees_log		= ilog2(1024);
