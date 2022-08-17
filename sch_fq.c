@@ -1150,7 +1150,10 @@ static int fq_init(struct Qdisc *sch, struct nlattr *opt,
 
   // check val present in Array
 
-  int retVal;
+ void unitTestFunction(void)
+	 {
+ 
+ int retVal;
 
   u32 arr[] = {1, 2, 3, 4, 5, 7, 8, 9, 12, 13, 15, 16};
 
@@ -1198,6 +1201,7 @@ static int fq_init(struct Qdisc *sch, struct nlattr *opt,
 
   printk("return Value if given wrong value of %d  is %d\n", sampleValwrng,
          retVal);
+         
 
   // end of function test
 
@@ -1206,11 +1210,14 @@ static int fq_init(struct Qdisc *sch, struct nlattr *opt,
   resetFlowid(arr, lengthOfarray);
 
   for (i = 0; i < lengthOfarray; i++) {
-    printk("array value at index %d is %d\n", i, retVal);
-  }
+    	printk("array value at index %d is %d\n", i, arr[i]);
+  	}
 
-  // end of function test
-
+  // end of function test 
+ 
+	}
+  	
+  unitTestFunction();	
   if (opt)
     err = fq_change(sch, opt, extack);
   else
