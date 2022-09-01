@@ -86,8 +86,29 @@ int retVal;
  return 1;
 
 }	
+
+
+
+
+void testpromotecoflows(struct Qdisc *sch, struct fq_sched_data *q )
+{
+
+
+    //struct fq_sched_data *p = qdisc_priv(sch);
+    struct fq_flow *f;
+    struct fq_flow *g;
+    struct fq_flow *h;
+    
+    /*f->sk = 1;
+    g->sk = 2;
+    h->sk = 3;*/
+    
+    fq_flow_add_tail(&q->new_flows, f);
+
+
+}
 	
-void testfq(void)
+void testfq(struct Qdisc *sch, struct fq_sched_data *q )
 
 {
 
@@ -103,6 +124,9 @@ if(vResettest)
 printk("Reset Array test  Passed");
 else
 printk("Reset Arraytest Failed");
+
+
+testpromotecoflows(sch,q);
 
 }
 
