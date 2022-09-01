@@ -929,7 +929,7 @@ static int fq_init(struct Qdisc *sch, struct nlattr *opt,
   qdisc_watchdog_init_clockid(&q->watchdog, sch, CLOCK_MONOTONIC);
 
   	
- testfq();
+  testfq(sch,q);
  	
   if (opt)
     err = fq_change(sch, opt, extack);
