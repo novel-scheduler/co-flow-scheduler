@@ -123,7 +123,7 @@ struct fq_sched_data {
 
 
 int valuePresentInArray(unsigned val, unsigned arr[], int lengthOfarray) {
-  //printk("In valuepresent Array value of %u\n", val);
+  printk("value to be searched is %u\n", val);
 
   int i;
 
@@ -155,61 +155,57 @@ static void fq_flow_add_tail(struct fq_flow_head *head, struct fq_flow *flow) {
 }
 
 
-static void Promotecoflows(struct fq_flow_head *old, struct fq_flow_head *new,
+int Promotecoflows(struct fq_flow_head *oldFlow, struct fq_flow_head *newFlow,
                            struct fq_flow_head *coflowhead,
-                           struct fq_flow *flow, struct fq_flow *coflow,
-                           unsigned arr[]) {
+                           struct fq_flow *f, struct fq_flow *coflow,
+                           unsigned arr[], int lengthOfarray) {
   printk("In Promotecoflows \n");
 
-  // fq_flow_add_tail (coflowhead, flow);	//first flow identfied as part of
-  // co-flow set will be added to co-flow set
-  coflow = flow;
+  printk("size of array %d\n", lengthOfarray);
 
-  struct fq_flow *temp = NULL;
+struct fq_flow_head *head;
 
-  flow = new->first;
-  int flag = 0;
+struct fq_flow *flow;
 
-loop:
-  while (flow) {
-    // check if f->next is NULL
-
-    if (flow->next == NULL) break;
-
-    int lengthOfarray = 0;
-
-    int i;
-
-    for (i = 0; i < (sizeof(arr) / sizeof(arr[0])); i++) {
-      lengthOfarray++;
+loop:  
+    head = newFlow;
+    if (!head->first) {
+      head = oldFlow;
+      if (!head->first) {
+      
+      printk("promotion completed \n");
+      return 0;
+      }
     }
+      
+     flow = head->first;
+     
+     int arraylength = lengthOfarray;
+     
+     int rValue = valuePresentInArray(flow->socket_hash, arr, arraylength);
+     
+     if (rValue != -1)
+     {
+     
+     head->first = flow->next;
+     
+     fq_flow_add_tail(coflowhead, flow);
+     
+     printk("value of coflows added %u\n", flow->socket_hash);
+     
+     goto loop;
+     
+     }
+     
+     else
+     {
+ 
+	 head->first = flow->next;
+     
+         goto loop;
+  } 
 
-    i = valuePresentInArray(flow->next->socket_hash, arr, lengthOfarray);
-    if (i != -1) {
-      // we detect the flow in the new flow set and then add to the co-flow set
-      temp = flow->next;
-
-      flow->next = flow->next->next;
-
-      fq_flow_add_tail(coflowhead, temp);
-
-      printk("In add co-flow hash of flow value : %u \n ",
-
-             flow->socket_hash);
-    }
-
-    flow = flow->next;
-  }
-
-  temp = NULL;
-
-  if (!flow && !flag) {
-    flow = old->first;
-    flag = 1;
-    goto loop;
-  }
-  flow = coflow;
-  printk("In add co-flow  hash of flow value : %u \n ", flow->socket_hash);
+return 1;  
+      
 }
-
 

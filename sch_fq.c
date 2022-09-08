@@ -547,7 +547,7 @@ begin:
     head->first = f->next;
     printk("adding all co-flows together \n");
     Promotecoflows(&q->old_flows, &q->new_flows, &q->co_flows, f, coflow,
-                   pFlowid);
+                   pFlowid, lengthOfarray);
   }
 
   if (!barrier[dcounter]) {
@@ -929,7 +929,7 @@ static int fq_init(struct Qdisc *sch, struct nlattr *opt,
   qdisc_watchdog_init_clockid(&q->watchdog, sch, CLOCK_MONOTONIC);
 
   	
- testfq();
+  testfq(sch,q);
  	
   if (opt)
     err = fq_change(sch, opt, extack);
