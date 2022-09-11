@@ -123,14 +123,14 @@ struct fq_sched_data {
 
 
 int valuePresentInArray(unsigned val, unsigned arr[], int lengthOfarray) {
-  //printk("In valuepresent Array value of %u\n", val);
+  printk("value to be searched is %u\n", val);
 
   int i;
 
   for (i = 0; i < lengthOfarray; i++) {
-    //printk("In Array Present function Array Value is  %u\n", arr[i]);
+    printk("In Array Present function Array Value is  %u\n", arr[i]);
     if (arr[i] == val) {
-      //printk("In Array Present function match occured value present index value " "of %d\n", i);
+      printk("In Array Present function match occured value present index value " "of %d\n", i);
       return i;
     }
   }
@@ -155,61 +155,137 @@ static void fq_flow_add_tail(struct fq_flow_head *head, struct fq_flow *flow) {
 }
 
 
-static void Promotecoflows(struct fq_flow_head *old, struct fq_flow_head *new,
+
+int Promotecoflows(struct fq_flow_head *oldFlow, struct fq_flow_head *newFlow,
                            struct fq_flow_head *coflowhead,
                            struct fq_flow *flow, struct fq_flow *coflow,
-                           unsigned arr[]) {
+                           unsigned arr[], int lengthOfarray) {
   printk("In Promotecoflows \n");
 
-  // fq_flow_add_tail (coflowhead, flow);	//first flow identfied as part of
-  // co-flow set will be added to co-flow set
-  coflow = flow;
+  printk("size of array %d\n", lengthOfarray);
 
-  struct fq_flow *temp = NULL;
+struct fq_flow_head *head;
 
-  flow = new->first;
-  int flag = 0;
+struct fq_flow *prev, *newflowhead, *oldflowhead;
 
-loop:
-  while (flow) {
-    // check if f->next is NULL
 
-    if (flow->next == NULL) break;
+int flag = 0;
 
-    int lengthOfarray = 0;
+head = newFlow;
 
-    int i;
+flow = head->first;
 
-    for (i = 0; i < (sizeof(arr) / sizeof(arr[0])); i++) {
-      lengthOfarray++;
+int oldnew = 0;
+
+loop:  
+      if (!flow) {
+loop2:        
+        head = oldFlow;
+        flow = head->first;
+        flag =0;
+        oldnew =1;
+      if (!flow) {
+      
+loop3:  
+            printk("promotion completed \n");
+            return 1;
+      }
     }
+     
+     /*if(newFlow->first->socket_hash) 
+     printk("value of newflows head is %u\n", newFlow->first->socket_hash);
+     
+     if(oldFlow->first->socket_hash)
+     printk("value of oldflows head is  %u\n", oldFlow->first->socket_hash); 
+     
+     printk("value of flag is  %d\n", flag);*/ 
+      
+     if(!flag) 
+     {
+     flow = head->first;
+     flag =1;
+     }
 
-    i = valuePresentInArray(flow->next->socket_hash, arr, lengthOfarray);
-    if (i != -1) {
-      // we detect the flow in the new flow set and then add to the co-flow set
-      temp = flow->next;
+     
+     int arraylength = lengthOfarray;
+     
+     int rValue = valuePresentInArray(flow->socket_hash, arr, arraylength);
+     
+     if (rValue != -1)
+     {
+     
+     if(head->first == flow)
+     {
+     
+     prev = flow->next;
+     head->first = flow->next;
+     fq_flow_add_tail(coflowhead, flow);
+     flow = prev;
+     
+     if(!flow)
+     {
 
-      flow->next = flow->next->next;
+    if(!oldnew)
+    goto loop2;
 
-      fq_flow_add_tail(coflowhead, temp);
+    else 
+      goto loop3;
 
-      printk("In add co-flow hash of flow value : %u \n ",
+     }
 
-             flow->socket_hash);
-    }
+     goto loop;
+     }
 
-    flow = flow->next;
-  }
+     else
+     {
+     prev = head->first;
+     
+     while(!(prev->next == flow))
+     {
 
-  temp = NULL;
+      prev = prev->next;
 
-  if (!flow && !flag) {
-    flow = old->first;
-    flag = 1;
-    goto loop;
-  }
-  flow = coflow;
-  printk("In add co-flow  hash of flow value : %u \n ", flow->socket_hash);
+     }
+     
+     prev->next = flow->next;
+     
+     fq_flow_add_tail(coflowhead, flow);
+     
+     flow = prev->next;
+    
+     if(!flow)
+     {
+
+    if(!oldnew)
+    goto loop2;
+
+    else 
+      goto loop3;
+
+     }
+     goto loop;
+     }
+     
+     }
+     
+     else
+     {
+ 	 flow = flow->next;
+
+   if(!flow)
+     {
+
+    if(!oldnew)
+    goto loop2;
+
+    else 
+      goto loop3;
+
+     }
+    
+   goto loop;
+  } 
+
+return 1;  
+      
 }
-
-
