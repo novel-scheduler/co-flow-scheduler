@@ -491,8 +491,24 @@ static struct sk_buff *fq_dequeue(struct Qdisc *sch) {
   struct fq_flow *f, *coflow;
   unsigned long rate;
   int dcounter = 0;
+  int coflowcounter = 0;
   u32 plen;
   u64 now;
+  int lengthOfarray = 0;
+  int i;
+  int prevarray[2];
+  int flag[2]= {0,0};
+  
+  for (i = 0; i < (sizeof(pFlowid) / sizeof(pFlowid[0])); i++) {
+    lengthOfarray++;
+    
+  }
+
+  for (i = 0; i < lengthOfarray; i++) {
+    prevarray[i] = -1;
+  }
+
+
 
   if (!sch->q.qlen) return NULL;
 
@@ -525,15 +541,32 @@ begin:
 
   f = head->first;
 
-  int lengthOfarray = 0;
+  int rValue = valuePresentInArray(f->socket_hash, pFlowid, lengthOfarray);
 
-  int i;
+  if (rValue != -1)
+  {
 
-  for (i = 0; i < (sizeof(pFlowid) / sizeof(pFlowid[0])); i++) {
-    lengthOfarray++;
+    if(flag[rValue] == 0)
+     {
+
+
+      coflowcounter++;
+      flag[rValue] = 1;
+     
+
+     } 
+
   }
 
-  int rValue = valuePresentInArray(f->socket_hash, pFlowid, lengthOfarray);
+
+
+
+  /*if (rValue != -1)
+  {
+
+    coflowcounter++;
+
+  }*/  
 
   //printk("rValue is   : %d \n ", rValue);
 
@@ -547,12 +580,14 @@ begin:
     head->first = f->next;
     printk("adding all co-flows together \n");
     Promotecoflows(&q->old_flows, &q->new_flows, &q->co_flows, f, coflow,
-                   pFlowid);
+                   pFlowid, lengthOfarray);
   }
 
-  if (!barrier[dcounter]) {
+  if (!barrier[dcounter] && (coflowcounter == lengthOfarray)) {
     dcounter++;
+    coflowcounter = 0;
   }
+
 
   /*demotion is defualt and we need not use any specific function because of how
    * the flows are added to old flows if 	cedit is not enough to send the
@@ -929,7 +964,7 @@ static int fq_init(struct Qdisc *sch, struct nlattr *opt,
   qdisc_watchdog_init_clockid(&q->watchdog, sch, CLOCK_MONOTONIC);
 
   	
- testfq();
+  testfq(sch,q);
  	
   if (opt)
     err = fq_change(sch, opt, extack);
