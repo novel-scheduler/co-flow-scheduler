@@ -249,7 +249,7 @@ int testpromotecoflows(struct Qdisc *sch, struct fq_sched_data *q, unsigned arr[
 return 1;
 }
   
-void testfq(struct Qdisc *sch, struct fq_sched_data *q )
+static void testfq(struct Qdisc *sch, struct fq_sched_data *q )
 
 {
 
@@ -263,7 +263,7 @@ unsigned testarray1[] = {7923,7921,7922,7924,7925};
 
 lengthOfarray = 0;
 
-for (a = 0; a < (sizeof(testarray1) / sizeof(testarray1[0])); a++) {
+for (a = 0; a < (sizeof(testarray1) / sizeof(testarray1[0])); a++)
 lengthOfarray++; 
 
 promoteflowstest = testpromotecoflows(sch,q, testarray1, lengthOfarray);
@@ -279,7 +279,7 @@ unsigned testarray2[] = {7921,7922,7923};
 
 lengthOfarray = 0;
 
-for (a = 0; a < (sizeof(testarray2) / sizeof(testarray2[0])); a++) {
+for (a = 0; a < (sizeof(testarray2) / sizeof(testarray2[0])); a++)
 lengthOfarray++; 
 
 
@@ -296,7 +296,7 @@ unsigned testarray3[] = {7921};
 
 lengthOfarray = 0;
 
-for (a = 0; a < (sizeof(testarray3) / sizeof(testarray3[0])); a++) {
+for (a = 0; a < (sizeof(testarray3) / sizeof(testarray3[0])); a++)
 lengthOfarray++; 
 
 
@@ -313,7 +313,7 @@ unsigned testarray4[] = {7922};
 
 lengthOfarray = 0;
 
-for (a = 0; a < (sizeof(testarray4) / sizeof(testarray4[0])); a++) {
+for (a = 0; a < (sizeof(testarray4) / sizeof(testarray4[0])); a++)
 lengthOfarray++; 
 
 
@@ -330,7 +330,7 @@ unsigned testarray5[] = {7925};
 
 lengthOfarray = 0;
 
-for (a = 0; a < (sizeof(testarray5) / sizeof(testarray5[0])); a++) {
+for (a = 0; a < (sizeof(testarray5) / sizeof(testarray5[0])); a++)
 lengthOfarray++; 
 
 
@@ -347,7 +347,7 @@ unsigned testarray6[] = {7923};
 
 lengthOfarray = 0;
 
-for (a = 0; a < (sizeof(testarray6) / sizeof(testarray6[0])); a++) {
+for (a = 0; a < (sizeof(testarray6) / sizeof(testarray6[0])); a++)
 lengthOfarray++; 
 
 
@@ -364,7 +364,7 @@ unsigned testarray7[] = {7924};
 
 lengthOfarray = 0;
 
-for (a = 0; a < (sizeof(testarray7) / sizeof(testarray7[0])); a++) {
+for (a = 0; a < (sizeof(testarray7) / sizeof(testarray7[0])); a++)
 lengthOfarray++; 
 
 
@@ -381,7 +381,7 @@ unsigned testarray8[] = {7926};
 
 lengthOfarray = 0;
 
-for (a = 0; a < (sizeof(testarray8) / sizeof(testarray8[0])); a++) {
+for (a = 0; a < (sizeof(testarray8) / sizeof(testarray8[0])); a++)
 lengthOfarray++; 
 
 
