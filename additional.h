@@ -6,6 +6,8 @@
 
 #define plimit 17
 
+#define coflownumber 3
+
 
 int pCount_enq = 0;
 
@@ -13,17 +15,21 @@ int pCount_deq = 0;
 
 int pCount = 0;
 
-int barriercounter_flow[2] = {0};
+int barriercounter_flow[coflownumber] = {0};
 
 int dcounter = 0;
 
-u32 pFlowid[2] = {-1, -1};
+int sCount;
+
+
+u32 pFlowid[coflownumber] = {-1};
+
 
 int firstflag = 0;
 
 int barrier[barrierNumber] = {0};
 
-struct fq_flow *flowmapper[2];
+struct fq_flow *flowmapper[coflownumber];
 
 char *bitmap[nFlows];
 
