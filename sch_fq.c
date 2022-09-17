@@ -51,6 +51,8 @@
 #include <net/tcp_states.h>
 #include "fqtest.h"
 
+#define coflownumber 3
+
 /*
  * f->tail and f->age share the same location.
  * We can use the low order bit to differentiate if this location points
@@ -222,7 +224,7 @@ static struct fq_flow *fq_classify(struct sk_buff *skb,
 
       int i;
 
-      for (i = 0; i < (sizeof(pFlowid) / sizeof(pFlowid[0])); i++) {
+      for (i = 0; i < coflownumber; i++) {
         lengthOfarray++;
       }
       if (unlikely(skb->sk == sk && f->socket_hash != sk->sk_hash)) {
@@ -230,30 +232,23 @@ static struct fq_flow *fq_classify(struct sk_buff *skb,
         f->socket_hash = sk->sk_hash;
         // printk("flow hash in rb tree value of each flow is  : %u \n
         // ",f->socket_hash );
-        if ((pFlowid[0] == -1) && (pFlowid[1] == -1)) {
-          pFlowid[0] = f->socket_hash;
-          printk(
-              "flow pflowid 0 hash in rb tree value of each flow is  : %u \n ",
-              pFlowid[0]);
-          if (pFlowid[0] == 0) {
-            resetFlowid(pFlowid, lengthOfarray);
-          }
-        }
-
-        if ((pFlowid[0] != -1) && (pFlowid[1] == -1)) {
+        for (i = 0; i < coflownumber; i++) {
+        if(pFlowid[i] == -1)
+        {
           int lVal =
               valuePresentInArray(f->socket_hash, pFlowid, lengthOfarray);
 
-          if (pFlowid[0] != f->socket_hash) pFlowid[1] = f->socket_hash;
 
-          printk(
-              "flow pflowid 1 hash in rb tree value of each flow is  : %u \n ",
-              pFlowid[1]);
+          if(lVal == -1)    
+          pFlowid[i] = f->socket_hash;
 
-          if ((pFlowid[1] == 0)) {
-            resetFlowid(pFlowid, lengthOfarray);
-          }
         }
+
+        if(!pFlowid[i])// flow id can't be zero
+          pFlowid[i] = -1;
+
+      }
+
 
         if (q->rate_enable)
           smp_store_release(&sk->sk_pacing_status, SK_PACING_FQ);
@@ -437,7 +432,7 @@ static int fq_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 
   int i;
 
-  for (i = 0; i < (sizeof(pFlowid) / sizeof(pFlowid[0])); i++) {
+  for (i = 0; i < coflownumber; i++) {
     lengthOfarray++;
   }
   int pValue = valuePresentInArray(f->socket_hash, pFlowid, lengthOfarray);
@@ -491,24 +486,13 @@ static struct sk_buff *fq_dequeue(struct Qdisc *sch) {
   struct fq_flow *f, *coflow;
   unsigned long rate;
   int dcounter = 0;
-  int coflowcounter = 0;
   u32 plen;
   u64 now;
-  int lengthOfarray = 0;
+  int lengthOfarray = coflownumber -1;
+  int coflowcounter = 0;
   int i;
-  int prevarray[2];
-  int flag[2]= {0,0};
-  
-  for (i = 0; i < (sizeof(pFlowid) / sizeof(pFlowid[0])); i++) {
-    lengthOfarray++;
-    
-  }
-
-  for (i = 0; i < lengthOfarray; i++) {
-    prevarray[i] = -1;
-  }
-
-
+  int barrierflag[coflownumber];
+  resetFlowid(barrierflag, lengthOfarray);
 
   if (!sch->q.qlen) return NULL;
 
@@ -543,30 +527,25 @@ begin:
 
   int rValue = valuePresentInArray(f->socket_hash, pFlowid, lengthOfarray);
 
+
   if (rValue != -1)
   {
 
-    if(flag[rValue] == 0)
-     {
+     if(barrierflag[rValue] == -1)
+       {
 
 
-      coflowcounter++;
-      flag[rValue] = 1;
+         coflowcounter++;
+         barrierflag[rValue] = rValue;
+
+        printk("if barrier value is -1 \n");
      
 
-     } 
+        } 
+
+    //coflowcounter++;
 
   }
-
-
-
-
-  /*if (rValue != -1)
-  {
-
-    coflowcounter++;
-
-  }*/  
 
   //printk("rValue is   : %d \n ", rValue);
 
@@ -586,8 +565,9 @@ begin:
   if (!barrier[dcounter] && (coflowcounter == lengthOfarray)) {
     dcounter++;
     coflowcounter = 0;
-  }
+    resetFlowid(barrierflag, lengthOfarray);
 
+  }
 
   /*demotion is defualt and we need not use any specific function because of how
    * the flows are added to old flows if 	cedit is not enough to send the

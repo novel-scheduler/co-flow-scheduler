@@ -275,6 +275,8 @@ printk("promote flows test  Passed");
 else
 printk("promote flows test  Failed");
 
+/*
+
 unsigned testarray2[] = {7921,7922,7923};
 
 lengthOfarray = 0;
@@ -393,7 +395,7 @@ if(promoteflowstest == 1)
 printk("promote flows test  Passed");
 else
 printk("promote flows test  Failed");
-
+*/
 
 int vArraytest = arrayTestFunction();
 if(vArraytest)
