@@ -230,7 +230,7 @@ static struct fq_flow *fq_classify(struct sk_buff *skb,
         f->socket_hash = sk->sk_hash;
         // printk("flow hash in rb tree value of each flow is  : %u \n
         // ",f->socket_hash );
-        if ((pFlowid[0] == -1) && (pFlowid[1] == -1)) {
+        /*if ((pFlowid[0] == -1) && (pFlowid[1] == -1)) {
           pFlowid[0] = f->socket_hash;
           printk(
               "flow pflowid 0 hash in rb tree value of each flow is  : %u \n ",
@@ -253,7 +253,7 @@ static struct fq_flow *fq_classify(struct sk_buff *skb,
           if ((pFlowid[1] == 0)) {
             resetFlowid(pFlowid, lengthOfarray);
           }
-        }
+        }*/
 
         if (q->rate_enable)
           smp_store_release(&sk->sk_pacing_status, SK_PACING_FQ);
@@ -404,6 +404,32 @@ static int fq_enqueue(struct sk_buff *skb, struct Qdisc *sch,
   qdisc_qstats_backlog_inc(sch, skb);
   if (fq_flow_is_detached(f)) {
     fq_flow_add_tail(&q->new_flows, f);
+    
+    int lengthOfarray = 0;
+
+    int i;
+
+      for (i = 0; i < (sizeof(pFlowid) / sizeof(pFlowid[0])); i++) {
+        lengthOfarray++;
+      }
+      
+         if ((pFlowid[0] == -1) && (pFlowid[1] == -1)) {
+          pFlowid[0] = f->socket_hash;
+          printk(
+              "flow pflowid 0 hash in rb tree value of each flow is  : %u \n ",
+              pFlowid[0]);
+        }
+
+        if ((pFlowid[0] != -1) && (pFlowid[1] == -1)) {
+          int lVal =
+              valuePresentInArray(f->socket_hash, pFlowid, lengthOfarray);
+
+          if (pFlowid[0] != f->socket_hash) pFlowid[1] = f->socket_hash;
+
+          printk(
+              "flow pflowid 1 hash in rb tree value of each flow is  : %u \n ",
+              pFlowid[1]);
+        }
 
     if (time_after(jiffies, f->age + q->flow_refill_delay))
       f->credit = max_t(u32, f->credit, q->quantum);
@@ -491,24 +517,10 @@ static struct sk_buff *fq_dequeue(struct Qdisc *sch) {
   struct fq_flow *f, *coflow;
   unsigned long rate;
   int dcounter = 0;
-  int coflowcounter = 0;
   u32 plen;
   u64 now;
-  int lengthOfarray = 0;
-  int i;
-  int prevarray[2];
-  int flag[2]= {0,0};
-  
-  for (i = 0; i < (sizeof(pFlowid) / sizeof(pFlowid[0])); i++) {
-    lengthOfarray++;
-    
-  }
-
-  for (i = 0; i < lengthOfarray; i++) {
-    prevarray[i] = -1;
-  }
-
-
+  pFlowid[0] = 3;
+  pFlowid[1] = 5;
 
   if (!sch->q.qlen) return NULL;
 
@@ -541,32 +553,15 @@ begin:
 
   f = head->first;
 
-  int rValue = valuePresentInArray(f->socket_hash, pFlowid, lengthOfarray);
+  int lengthOfarray = 0;
 
-  if (rValue != -1)
-  {
+  int i;
 
-    if(flag[rValue] == 0)
-     {
-
-
-      coflowcounter++;
-      flag[rValue] = 1;
-     
-
-     } 
-
+  for (i = 0; i < (sizeof(pFlowid) / sizeof(pFlowid[0])); i++) {
+    lengthOfarray++;
   }
 
-
-
-
-  /*if (rValue != -1)
-  {
-
-    coflowcounter++;
-
-  }*/  
+  int rValue = valuePresentInArray(f->socket_hash, pFlowid, lengthOfarray);
 
   //printk("rValue is   : %d \n ", rValue);
 
@@ -583,11 +578,9 @@ begin:
                    pFlowid, lengthOfarray);
   }
 
-  if (!barrier[dcounter] && (coflowcounter == lengthOfarray)) {
+  if (!barrier[dcounter]) {
     dcounter++;
-    coflowcounter = 0;
   }
-
 
   /*demotion is defualt and we need not use any specific function because of how
    * the flows are added to old flows if 	cedit is not enough to send the
@@ -597,6 +590,23 @@ begin:
     f->credit += q->quantum;
     head->first = f->next;
     fq_flow_add_tail(&q->old_flows, f);
+    
+     struct fq_flow_head *checkhead;
+     
+     checkhead = &q->old_flows;
+    
+     struct fq_flow *checkflowvalue;
+     
+     checkflowvalue = checkhead->first;
+     
+     while(checkflowvalue)
+     {
+     
+     printk("This is to check old flows data  socket_hash is %d \n", checkflowvalue->socket_hash);
+     
+     checkflowvalue = checkflowvalue->next; 
+     }
+     
     goto begin;
   }
 
@@ -622,6 +632,25 @@ begin:
     /* force a pass through old_flows to prevent starvation */
     if ((head == &q->new_flows) && q->old_flows.first) {
       fq_flow_add_tail(&q->old_flows, f);
+      
+     struct fq_flow_head *checkhead;
+     
+     checkhead = &q->old_flows;
+    
+     struct fq_flow *checkflowvalue;
+     
+     checkflowvalue = checkhead->first;
+     
+     while(checkflowvalue)
+     {
+     
+     printk("This is to check old flows data  socket_hash is %d \n", checkflowvalue->socket_hash);
+     
+     checkflowvalue = checkflowvalue->next; 
+     }
+     
+
+          
     } else {
       fq_flow_set_detached(f);
       q->inactive_flows++;
@@ -964,7 +993,7 @@ static int fq_init(struct Qdisc *sch, struct nlattr *opt,
   qdisc_watchdog_init_clockid(&q->watchdog, sch, CLOCK_MONOTONIC);
 
   	
-  testfq(sch,q);
+  //testfq(sch,q);
  	
   if (opt)
     err = fq_change(sch, opt, extack);
