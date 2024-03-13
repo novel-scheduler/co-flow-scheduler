@@ -1,0 +1,118 @@
+$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+kernel installation
+$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+
+Requirement :
+
+Ubuntu 20.04/22.04
+
+copy all the *.deb files to cloudlab/local machine
+
+installing the kernel
+
+sudo dpkg -i *.deb
+
+after installation
+
+sudo update-grub
+
+
+*****************************************************************************************************************************************
+Getting started with the custom qdisc installation :
+*******************************************************************************************************************************************
+
+
+
+---------------------------------------------------------------------------------------------------------
+custom TC is already built and it is portable
+-----------------------------------------------------------------------------------------------------------
+
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+changes to makefile for building the kernel module, you will find makefile in the scheduler folder 
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+TARGET = sch_fq
+
+EXTRA_CFLAGS += $(FLAGS)
+
+obj-m := $(TARGET).o
+
+#uname -r will give the kernel ifo substitute at the following places
+all:
+	make -C /lib/modules/$(uname -r)/build M=$(shell pwd) modules
+
+clean:
+	make -C /lib/modules/$(uname -r)/build M=$(shell pwd) clean
+
+
+
+
+
+------------------------------------------------------------------------------------------
+changes needed made for  master script for loading the kernel module amd setting up qdisc:
+-------------------------------------------------------------------------------------------
+The script must be modified as instructed in the comments 
+
+
+#kernel version obtained from uname -r 
+
+ex : sudo  cp pkt_sched.h  /usr/src/linux-headers-5.15.67-custom-new/include/uapi/linux/pkt_sched.h
+
+#sudo  cp pkt_sched.h  /usr/src/linux-headers-5.15.67-custom/include/uapi/linux/addtional.h
+
+
+#change the interface here its lo and enp0s3
+
+ex : sudo tc qdisc del dev enp0s3 root
+
+
+ex : sudo tc qdisc del dev lo root
+
+sudo rmmod sch_fq
+
+make clean
+
+make
+
+sudo insmod sch_fq.ko 
+
+#add path to the scheduler folder 
+#sudo env TC_LIB_DIR=PATH TO /scheduler/iproute2/tc ./iproute2/tc/tc help
+
+ex : sudo env TC_LIB_DIR=~/scheduler/iproute2/tc ./iproute2/tc/tc help
+
+clearing the dmesg:
+
+ex: sudo dmesg -c
+
+#add path to the scheduler folder 
+#sudo env TC_LIB_DIR=PATH TO /scheduler/iproute2/tc ./iproute2/tc/tc help
+
+
+ex: sudo env TC_LIB_DIR=/home/bala/Documents/Custom-tc-novel-scheduler/scheduler/iproute2/tc ./iproute2/tc/tc qdisc add dev enp0s3 root fq f1_sourceport 46730 f2_sourceport 46731 f1_destport 5800 f2_destport 6000
+
+ex : sudo env TC_LIB_DIR=~/scheduler/iproute2/tc ./iproute2/tc/tc qdisc add dev lo root fq f1_sourceport 46730 f2_sourceport 46731 f1_destport 5800 f2_destport 6000
+
+
+#add path to the scheduler folder 
+
+ex: sudo env TC_LIB_DIR=PATH TO /scheduler/iproute2/tc ./iproute2/tc/tc help
+
+
+ex : sudo env TC_LIB_DIR=~/scheduler/iproute2/tc ./iproute2/tc/tc qdisc show
+
+
+#deletion of qdisc if needed
+
+ex:
+
+sudo tc qdisc del dev enp0s3 root
+
+sudo tc qdisc del dev lo root
+
+now=$(date +"%r")
+
+exit 0
+#committed to new branch
